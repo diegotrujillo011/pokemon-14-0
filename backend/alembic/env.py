@@ -1,4 +1,5 @@
 import asyncio
+import urllib.parse
 
 from alembic import context
 from sqlalchemy import pool
@@ -14,10 +15,21 @@ config = context.config
 target_metadata = Base.metadata
 
 
-def run_migrations_offline() -> None:
+def get_real_db_url() -> str:
     settings = get_settings()
+    pwd = (
+        settings.postgres_password.get_secret_value()
+        if hasattr(settings.postgres_password, "get_secret_value")
+        else settings.postgres_password
+    )
+    pwd_escaped = urllib.parse.quote_plus(str(pwd))
+    return f"postgresql+asyncpg://{settings.postgres_user}:{pwd_escaped}@{settings.database_host}:{settings.database_port}/{settings.postgres_db}?ssl=require"
+
+
+def run_migrations_offline() -> None:
+    db_url = get_real_db_url()
     context.configure(
-        url=settings.database_url.render_as_string(hide_password=False),
+        url=db_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -40,9 +52,9 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    settings = get_settings()
+    db_url = get_real_db_url()
     connectable = create_async_engine(
-        settings.database_url,
+        db_url,
         poolclass=pool.NullPool,
     )
 
